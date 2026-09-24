@@ -9,6 +9,10 @@ import {
   ITEM_METADATA,
   snap,
 } from "@/features/retro-office/core/geometry";
+import {
+  LOCAL_OFFICE_ZONE,
+  REMOTE_OFFICE_ZONE,
+} from "@/features/retro-office/core/district";
 import type {
   FacingPoint,
   FurnitureItem,
@@ -77,6 +81,16 @@ const GRID_ROWS = Math.ceil(CANVAS_H / GRID_CELL);
 
 export type NavGrid = Uint8Array;
 
+// Outer building walls drawn by the scene (see core/district.ts). Each one is
+// marked on the grid row just outside the building, so no floor space inside
+// is lost: `outside` is the direction away from the interior.
+const DOOR_REACH = 30;
+const DISTRICT_WALLS: Array<{ y: number; outside: 1 | -1 }> = [
+  { y: LOCAL_OFFICE_ZONE.maxY, outside: 1 },
+  { y: REMOTE_OFFICE_ZONE.minY, outside: -1 },
+  { y: REMOTE_OFFICE_ZONE.maxY, outside: 1 },
+];
+
 /**
  * Returns true if the given item type should block pathfinding cells.
  * Driven by ITEM_METADATA.blocksNavigation — the single source of truth for
@@ -109,6 +123,48 @@ export function buildNavGrid(furniture: FurnitureItem[]): NavGrid {
         const index = row * GRID_COLS + column;
         grid[index] = Math.max(grid[index], mark);
       }
+    }
+  }
+
+  // Doors are passable, but the padding around the wall they sit in covers
+  // them, which seals whole rooms off the grid (the server room had no way
+  // out except through the outer wall). Carve each door through its wall.
+  for (const item of furniture) {
+    if (item.type !== "door") continue;
+    const bounds = getItemBounds(item);
+    const vertical = bounds.h >= bounds.w;
+    // Across the wall: reach through its padding on both sides. Along the
+    // wall: only cells whose centre lies inside the door, so the opening
+    // never extends past the door frame into the wall end beside it.
+    const along = (start: number, length: number) => {
+      const first = Math.ceil((start - GRID_CELL / 2) / GRID_CELL);
+      const last = Math.floor((start + length - GRID_CELL / 2) / GRID_CELL);
+      if (first <= last) return [first, last];
+      const middle = Math.floor((start + length / 2) / GRID_CELL);
+      return [middle, middle];
+    };
+    const across = (start: number, length: number) => [
+      Math.floor((start - DOOR_REACH) / GRID_CELL),
+      Math.floor((start + length + DOOR_REACH) / GRID_CELL),
+    ];
+    const [c1, c2] = vertical ? across(bounds.x, bounds.w) : along(bounds.x, bounds.w);
+    const [r1, r2] = vertical ? along(bounds.y, bounds.h) : across(bounds.y, bounds.h);
+    for (let row = Math.max(0, r1); row <= Math.min(GRID_ROWS - 1, r2); row += 1) {
+      for (let column = Math.max(0, c1); column <= Math.min(GRID_COLS - 1, c2); column += 1) {
+        if (grid[row * GRID_COLS + column] === 2) grid[row * GRID_COLS + column] = 0;
+      }
+    }
+  }
+
+  // The building's outer walls are drawn by the scene, not placed as
+  // furniture, so they are missing from the furniture pass above. Without
+  // them the grid is one open field and agents path out through the south
+  // wall onto the street. Mark each district's horizontal walls as walls.
+  for (const wall of DISTRICT_WALLS) {
+    const row = Math.floor((wall.y + (wall.outside * GRID_CELL) / 2) / GRID_CELL);
+    if (row < 0 || row >= GRID_ROWS) continue;
+    for (let column = 0; column < GRID_COLS; column += 1) {
+      grid[row * GRID_COLS + column] = 2;
     }
   }
 

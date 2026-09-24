@@ -100,6 +100,7 @@ import {
   LOCAL_OFFICE_CANVAS_WIDTH,
   projectFurnitureIntoRemoteOfficeZone,
   REMOTE_OFFICE_ZONE,
+  LOCAL_OFFICE_ZONE,
   REMOTE_ROAM_POINTS,
 } from "@/features/retro-office/core/district";
 import {
@@ -2425,18 +2426,15 @@ function useAgentTick(
                   Math.round((f.x + off.dx * 30) / SNAP_GRID) * SNAP_GRID;
                 const ty =
                   Math.round((f.y + off.dy * 30) / SNAP_GRID) * SNAP_GRID;
-                target = isRemoteOfficeAgentId(agent.id)
-                  ? clampPointToZone(tx, ty, REMOTE_OFFICE_ZONE)
-                  : {
-                      x: Math.max(
-                        SNAP_GRID,
-                        Math.min(CANVAS_W - SNAP_GRID, tx),
-                      ),
-                      y: Math.max(
-                        SNAP_GRID,
-                        Math.min(CANVAS_H - SNAP_GRID, ty),
-                      ),
-                    };
+                // Keep local agents inside their own building: the canvas
+                // also holds the street and the remote office below it.
+                target = clampPointToZone(
+                  tx,
+                  ty,
+                  isRemoteOfficeAgentId(agent.id)
+                    ? REMOTE_OFFICE_ZONE
+                    : LOCAL_OFFICE_ZONE,
+                );
               }
               if (!target) {
                 target = pickRoamPoint(agent.id);
