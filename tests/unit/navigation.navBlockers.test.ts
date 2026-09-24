@@ -35,7 +35,7 @@ const isBlocked = (
 
   for (let r = r1; r <= r2; r++) {
     for (let c = c1; c <= c2; c++) {
-      if (grid[r * GRID_COLS + c] === 1) return true;
+      if (grid[r * GRID_COLS + c] !== 0) return true;
     }
   }
   return false;

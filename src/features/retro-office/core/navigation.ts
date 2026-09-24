@@ -101,9 +101,13 @@ export function buildNavGrid(furniture: FurnitureItem[]): NavGrid {
     const c2 = Math.min(GRID_COLS - 1, Math.floor(x2 / GRID_CELL));
     const r1 = Math.max(0, Math.floor(y1 / GRID_CELL));
     const r2 = Math.min(GRID_ROWS - 1, Math.floor(y2 / GRID_CELL));
+    // Walls are marked 2 so path smoothing can tell them apart from props:
+    // an agent may brush the desk it is walking up to, never a wall.
+    const mark = item.type === "wall" ? 2 : 1;
     for (let row = r1; row <= r2; row += 1) {
       for (let column = c1; column <= c2; column += 1) {
-        grid[row * GRID_COLS + column] = 1;
+        const index = row * GRID_COLS + column;
+        grid[index] = Math.max(grid[index], mark);
       }
     }
   }
@@ -180,8 +184,52 @@ export function astar(
   const cellCx = (column: number) => column * GRID_CELL + GRID_CELL / 2;
   const cellCy = (row: number) => row * GRID_CELL + GRID_CELL / 2;
 
-  const findFree = (column: number, row: number) => {
+  // A blocked start/end cell is snapped to a nearby free cell, and the agent
+  // then walks the last straight leg between that cell and the real point.
+  // Only accept a snap cell with a clear line to the real point — otherwise
+  // the nearest free cell can sit on the far side of a wall and that last leg
+  // cuts straight through it. Blocked cells right next to the real point are
+  // tolerated: they are the desk or prop the agent is walking up to.
+  const hasClearApproach = (
+    column: number,
+    row: number,
+    px: number,
+    py: number,
+    homeColumn: number,
+    homeRow: number,
+    wallsOnly = false,
+  ) => {
+    const fromX = cellCx(column);
+    const fromY = cellCy(row);
+    const steps = Math.max(1, Math.ceil(Math.hypot(px - fromX, py - fromY) / 5));
+    for (let step = 1; step < steps; step += 1) {
+      const x = fromX + ((px - fromX) * step) / steps;
+      const y = fromY + ((py - fromY) * step) / steps;
+      const sampleColumn = clamp(Math.floor(x / GRID_CELL), 0, GRID_COLS - 1);
+      const sampleRow = clamp(Math.floor(y / GRID_CELL), 0, GRID_ROWS - 1);
+      const cell = grid[sampleRow * GRID_COLS + sampleColumn];
+      if (!cell) continue;
+      if (wallsOnly && cell !== 2) continue;
+      if (
+        cell !== 2 &&
+        Math.abs(sampleColumn - homeColumn) <= 1 &&
+        Math.abs(sampleRow - homeRow) <= 1
+      ) {
+        continue;
+      }
+      return false;
+    }
+    return true;
+  };
+
+  const findFree = (
+    column: number,
+    row: number,
+    point?: { x: number; y: number },
+  ) => {
     if (!grid[row * GRID_COLS + column]) return { c: column, r: row };
+    let firstFree: { c: number; r: number } | null = null;
+    let wallSafe: { c: number; r: number } | null = null;
     for (let distance = 1; distance < 10; distance += 1) {
       for (let rowOffset = -distance; rowOffset <= distance; rowOffset += 1) {
         for (
@@ -206,18 +254,41 @@ export function astar(
             continue;
           }
           if (!grid[nextRow * GRID_COLS + nextColumn]) {
-            return { c: nextColumn, r: nextRow };
+            if (
+              !point ||
+              hasClearApproach(nextColumn, nextRow, point.x, point.y, column, row)
+            ) {
+              return { c: nextColumn, r: nextRow };
+            }
+            if (
+              !wallSafe &&
+              hasClearApproach(nextColumn, nextRow, point.x, point.y, column, row, true)
+            ) {
+              wallSafe = { c: nextColumn, r: nextRow };
+            }
+            firstFree ??= { c: nextColumn, r: nextRow };
           }
         }
       }
     }
-    return null;
+    // Next best: a leg that may cross furniture padding but never a wall.
+    return wallSafe ?? firstFree;
   };
 
   let { c: sc, r: sr } = toCell(sx, sy);
   let { c: ec, r: er } = toCell(ex, ey);
-  const startFree = findFree(sc, sr);
-  const endFree = findFree(ec, er);
+  const startFree = findFree(sc, sr, { x: sx, y: sy });
+  const endFree = findFree(ec, er, { x: ex, y: ey });
+  // No snap cell can see the real target: stop at the free cell instead of
+  // walking the final leg through whatever is in between.
+  const endReachable =
+    !endFree ||
+    (endFree.c === ec && endFree.r === er) ||
+    hasClearApproach(endFree.c, endFree.r, ex, ey, ec, er, true);
+  if (!endReachable && endFree) {
+    ex = cellCx(endFree.c);
+    ey = cellCy(endFree.r);
+  }
   if (!startFree || !endFree) return [];
   sc = startFree.c;
   sr = startFree.r;
