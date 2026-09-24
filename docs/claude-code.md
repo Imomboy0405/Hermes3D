@@ -63,6 +63,19 @@ Model belgisi: 🟣 Opus, 🔵 Sonnet, 🟢 Haiku, 🟠 Fable/Mythos.
 - Holat `%USERPROFILE%\.agent-office\claude-state.json` fayliga saqlanadi. Adapterni qayta ishga tushirsangiz, xodimlar joyida qoladi.
 - Adapter ishlamayotgan paytda Claude Code odatdagidek ishlayveradi. Hook'lar hech narsani bloklamaydi.
 
+## Doimiy jamoa
+
+`~/.claude/agents/` dagi har bir subagent fayli, shuningdek ochiq proektlarning `.claude/agents/` papkasidagilari ofisda **doimiy xodim** bo'lib turadi:
+
+- boshida hammasi bo'sh holatda o'tiradi;
+- Claude Code biror agentga ish topshirsa, o'sha xodim ishlay boshlaydi, ish tugagach yana bo'shaydi;
+- bir turdagi agent bir vaqtda ikki marta chaqirilsa, ikkinchisi vaqtinchalik yordamchi (`explorer #2`) bo'lib chiqadi va ish tugagach ketadi;
+- agent fayli qo'shilsa yoki o'chirilsa, ofis avtomatik yangilanadi.
+
+Limit panelidagi **Jamoa** bo'limida kim band ekani va qaysi sessiya uchun ishlayotgani ko'rinadi.
+
+Agentlar faqat ishlayotganda ko'rinishini istasangiz, adapterni `set AGENT_OFFICE_ROSTER=0` bilan ishga tushiring.
+
 ## Limit paneli
 
 Ofisning o'ng yuqori burchagida **Claude limit** paneli turadi. Unda quyidagilar ko'rinadi:

@@ -15,7 +15,7 @@ type UsageWindow = { usedPercentage: number | null; resetsAt: number | null } | 
 type UsageAgent = {
   agentId: string;
   name: string;
-  kind: "session" | "subagent";
+  kind: "session" | "subagent" | "roster";
   model: string | null;
   modelFamily: string | null;
   status: "idle" | "running" | "waiting" | "error";
@@ -167,6 +167,12 @@ export function ClaudeUsageHud() {
       .map((agent) => ({ agent, helpers: byParent.get(agent.agentId) ?? [] }));
   }, [usage]);
 
+  const team = useMemo(() => (usage ? usage.agents.filter((agent) => agent.kind === "roster") : []), [usage]);
+  const sessionNameById = useMemo(
+    () => new Map((usage?.agents ?? []).map((agent) => [agent.agentId, agent.name])),
+    [usage],
+  );
+
   if (!usage) return null;
 
   const hasLimits = usage.fiveHour !== null || usage.sevenDay !== null;
@@ -206,7 +212,7 @@ export function ClaudeUsageHud() {
 
           <div className="space-y-1.5 border-t border-amber-900/25 pt-2.5">
             <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-amber-500/70">
-              Agentlar · {usage.agents.length}
+              Sessiyalar · {sessions.length}
             </div>
             {sessions.length === 0 ? (
               <p className="text-[11px] text-amber-100/50">Hozircha ochiq Claude Code sessiyasi yo&apos;q.</p>
@@ -223,6 +229,21 @@ export function ClaudeUsageHud() {
               ))
             )}
           </div>
+
+          {team.length > 0 ? (
+            <div className="space-y-1.5 border-t border-amber-900/25 pt-2.5">
+              <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-amber-500/70">
+                Jamoa · {team.filter((member) => member.status === "running").length}/{team.length} band
+              </div>
+              {team.map((member) => (
+                <AgentRow
+                  key={member.agentId}
+                  agent={member}
+                  hint={member.parentId ? sessionNameById.get(member.parentId) : undefined}
+                />
+              ))}
+            </div>
+          ) : null}
           <LanguageSwitch />
         </div>
       )}
@@ -230,7 +251,7 @@ export function ClaudeUsageHud() {
   );
 }
 
-function AgentRow({ agent }: { agent: UsageAgent }) {
+function AgentRow({ agent, hint }: { agent: UsageAgent; hint?: string }) {
   const family = agent.modelFamily;
   return (
     <div className="flex items-center gap-2" title={agent.currentTool ?? STATUS_LABEL[agent.status]}>
@@ -238,6 +259,7 @@ function AgentRow({ agent }: { agent: UsageAgent }) {
       <span className="min-w-0 flex-1 truncate text-[11px] text-amber-50/90" data-no-translate>
         {agent.kind === "subagent" ? "↳ " : ""}
         {agent.name}
+        {hint ? <span className="text-amber-100/40"> → {hint}</span> : null}
       </span>
       {typeof agent.contextUsedPercentage === "number" ? (
         <span className="font-mono text-[9px] text-amber-100/45">ctx {Math.round(agent.contextUsedPercentage)}%</span>

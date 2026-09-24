@@ -99,6 +99,7 @@ const EMOJI_BY_FAMILY = { Opus: "🟣", Sonnet: "🔵", Haiku: "🟢", Fable: "�
 
 function emojiFor(agent) {
   if (agent.kind === "subagent") return "🧑‍🔧";
+  if (agent.kind === "roster") return EMOJI_BY_FAMILY[shortModel(agent.model)] || "🧑‍💻";
   return EMOJI_BY_FAMILY[shortModel(agent.model)] || "🤖";
 }
 
@@ -109,6 +110,7 @@ function roleFor(agent) {
     const base = agent.subagentType || "subagent";
     return parent ? `${base} · ${parent.name}` : base;
   }
+  if (agent.kind === "roster") return model ? `Jamoa · ${model}` : "Jamoa";
   return model ? `Claude Code · ${model}` : "Claude Code";
 }
 
@@ -291,7 +293,9 @@ function removeAgent(agentId) {
   if (agent.kind === "session") {
     if (sessionToAgent.get(agent.sessionId) === agentId) sessionToAgent.delete(agent.sessionId);
     for (const child of [...agents.values()]) {
-      if (child.parentId === agentId) removeAgent(child.id);
+      if (child.parentId !== agentId) continue;
+      if (child.kind === "roster") releaseRosterMember(child);
+      else removeAgent(child.id);
     }
   } else if (agent.subagentId && subagentToAgent.get(agent.subagentId) === agentId) {
     subagentToAgent.delete(agent.subagentId);
@@ -300,6 +304,170 @@ function removeAgent(agentId) {
   log(`removed ${agent.kind} "${agent.name}"`);
   emitPresence();
   scheduleSave();
+}
+
+// ---------------------------------------------------------------------------
+// Team roster: every subagent definition in ~/.claude/agents (and in each
+// open project's .claude/agents) is a permanent office worker. It sits idle
+// until Claude Code delegates to it, then works and goes back to idle.
+// Set AGENT_OFFICE_ROSTER=0 to show subagents only while they run.
+// ---------------------------------------------------------------------------
+
+const ROSTER_ENABLED = process.env.AGENT_OFFICE_ROSTER !== "0";
+const USER_AGENTS_DIR = path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude"), "agents");
+const rosterWatchers = new Map();
+let rosterReloadTimer = null;
+
+function rosterMemberFor(type) {
+  if (!type) return null;
+  const agent = agents.get(`team-${slugify(type)}`);
+  return agent && agent.kind === "roster" ? agent : null;
+}
+
+function releaseRosterMember(member) {
+  if (member.subagentId && subagentToAgent.get(member.subagentId) === member.id) {
+    subagentToAgent.delete(member.subagentId);
+  }
+  member.subagentId = null;
+  member.parentId = null;
+  member.currentTool = null;
+  if (member.status !== "idle") endRun(member);
+}
+
+function slugify(value) {
+  return String(value).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "agent";
+}
+
+function parseAgentDefinition(file) {
+  let text;
+  try {
+    text = fs.readFileSync(file, "utf8").replace(/^﻿/, "");
+  } catch {
+    return null;
+  }
+  const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!match) return null;
+  const fields = {};
+  for (const line of match[1].split(/\r?\n/)) {
+    const pair = line.match(/^([A-Za-z][\w-]*)\s*:\s*(.*)$/);
+    if (pair) fields[pair[1]] = pair[2].trim().replace(/^["']|["']$/g, "");
+  }
+  if (!fields.name) return null;
+  return {
+    name: fields.name,
+    model: fields.model && fields.model !== "inherit" ? fields.model : null,
+    description: fields.description || "",
+    file,
+  };
+}
+
+function listAgentFiles(dir, depth = 0) {
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const files = [];
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory() && depth < 3) files.push(...listAgentFiles(full, depth + 1));
+    else if (entry.isFile() && entry.name.endsWith(".md")) files.push(full);
+  }
+  return files;
+}
+
+function rosterDirectories() {
+  const dirs = [];
+  // Project definitions win over user ones with the same name, as in Claude Code.
+  for (const agent of agents.values()) {
+    if (agent.kind === "session" && agent.workspace) {
+      dirs.push(path.join(agent.workspace, ".claude", "agents"));
+    }
+  }
+  dirs.push(USER_AGENTS_DIR);
+  return [...new Set(dirs)];
+}
+
+function watchRosterDir(dir) {
+  if (rosterWatchers.has(dir) || !fs.existsSync(dir)) return;
+  try {
+    const watcher = fs.watch(dir, { recursive: true }, () => scheduleRosterReload());
+    watcher.on("error", () => {
+      watcher.close();
+      rosterWatchers.delete(dir);
+    });
+    rosterWatchers.set(dir, watcher);
+  } catch {
+    // Recursive watch unsupported here; the periodic reload still covers it.
+  }
+}
+
+function scheduleRosterReload() {
+  if (!ROSTER_ENABLED || rosterReloadTimer) return;
+  rosterReloadTimer = setTimeout(() => {
+    rosterReloadTimer = null;
+    reloadRoster();
+  }, 400);
+}
+
+function reloadRoster() {
+  if (!ROSTER_ENABLED) return;
+  const definitions = new Map();
+  for (const dir of rosterDirectories()) {
+    watchRosterDir(dir);
+    for (const file of listAgentFiles(dir)) {
+      const def = parseAgentDefinition(file);
+      if (def && !definitions.has(slugify(def.name))) definitions.set(slugify(def.name), def);
+    }
+  }
+
+  let changed = false;
+  for (const [slug, def] of definitions) {
+    const id = `team-${slug}`;
+    const existing = agents.get(id);
+    if (existing) {
+      if (existing.model !== def.model || existing.description !== def.description) {
+        existing.model = def.model;
+        existing.description = def.description;
+        changed = true;
+      }
+      continue;
+    }
+    agents.set(id, {
+      id,
+      kind: "roster",
+      name: def.name,
+      subagentType: def.name,
+      description: def.description,
+      sessionId: null,
+      subagentId: null,
+      parentId: null,
+      workspace: path.dirname(def.file),
+      model: def.model,
+      status: "idle",
+      runId: null,
+      currentTool: null,
+      createdAt: now(),
+      lastActivityAt: now(),
+      history: [],
+      ended: false,
+    });
+    changed = true;
+  }
+  for (const agent of [...agents.values()]) {
+    if (agent.kind !== "roster" || agent.status === "running") continue;
+    if (!definitions.has(slugify(agent.name))) {
+      removeAgent(agent.id);
+      changed = true;
+    }
+  }
+  if (changed) {
+    const team = [...agents.values()].filter((a) => a.kind === "roster").map((a) => a.name);
+    log(`team (${team.length}): ${team.join(", ") || "—"}`);
+    emitPresence();
+    emitUsage();
+  }
 }
 
 function ensureSessionAgent(input) {
@@ -345,6 +513,22 @@ function ensureSubagent(parent, input) {
   if (subagentId && subagentToAgent.has(subagentId)) {
     const existing = agents.get(subagentToAgent.get(subagentId));
     if (existing) return existing;
+  }
+  // A permanent team member (~/.claude/agents) takes the job when it is free.
+  const member = rosterMemberFor(subagentType);
+  if (
+    member &&
+    !member.subagentId &&
+    (member.status !== "running" || member.parentId === parent.id)
+  ) {
+    member.parentId = parent.id;
+    member.sessionId = parent.sessionId;
+    member.workspace = parent.workspace;
+    if (subagentId) {
+      member.subagentId = subagentId;
+      subagentToAgent.set(subagentId, member.id);
+    }
+    return member;
   }
   // SubagentStart without an id: reuse an unbound helper of the same type.
   if (subagentId) {
@@ -571,6 +755,8 @@ function handleHook(input) {
     return;
   }
 
+  if (event === "SessionStart") scheduleRosterReload();
+
   if (event === "SubagentStart") {
     const parent = ensureSessionAgent(input);
     if (!parent) return;
@@ -589,7 +775,8 @@ function handleHook(input) {
       sub = agents.get(subagentToAgent.get(input.agent_id));
     } else {
       sub = [...agents.values()]
-        .filter((a) => a.kind === "subagent" && a.parentId === parent.id && !a.ended)
+        .filter((a) => (a.kind === "subagent" || a.kind === "roster") && a.parentId === parent.id && !a.ended)
+        .filter((a) => a.kind !== "roster" || a.status === "running")
         .filter((a) => !input.agent_type || a.subagentType === input.agent_type)
         .sort((a, b) => a.createdAt - b.createdAt)[0];
     }
@@ -600,6 +787,12 @@ function handleHook(input) {
       emitSpeech(sub, input.last_assistant_message);
     }
     endRun(sub);
+    if (sub.kind === "roster") {
+      // Team members stay in the office; they just go back to idle.
+      releaseRosterMember(sub);
+      emitPresence();
+      return;
+    }
     sub.ended = true;
     scheduleRemoval(sub.id, SUBAGENT_LINGER_MS);
     return;
@@ -861,7 +1054,7 @@ async function handleMethod(method, params, id) {
           key: sessionKeyFor(agent.id),
           agentId: agent.id,
           updatedAt: agent.lastActivityAt,
-          displayName: agent.kind === "subagent" ? agent.subagentType : "Main",
+          displayName: agent.kind === "session" ? "Main" : agent.subagentType,
           origin: { label: agent.name, provider: "claude-code" },
           model: agent.model || null,
           modelProvider: "anthropic",
@@ -1144,12 +1337,15 @@ function createServer() {
 function sweepStaleAgents() {
   for (const agent of [...agents.values()]) {
     if (agent.status === "running" || agent.status === "waiting") continue;
+    if (agent.kind === "roster") continue;
     if (now() - agent.lastActivityAt > STALE_AGENT_MS) removeAgent(agent.id);
   }
 }
 
 function startAdapter() {
   loadState();
+  reloadRoster();
+  setInterval(reloadRoster, 60_000).unref();
   const server = createServer();
   server.on("error", (error) => {
     if (error.code === "EADDRINUSE") {
