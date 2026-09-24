@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { ChevronDown, ChevronUp, Gauge } from "lucide-react";
+import { readUiLang, UI_LANG_KEY } from "@/components/UiTranslator";
 
 /**
  * Claude plan limits and per-worker models, read from the Claude Code
@@ -104,7 +105,7 @@ function LimitBar({ label, window: win, nowMs }: { label: string; window: UsageW
       </div>
       {win?.resetsAt ? (
         <div className="text-right font-mono text-[9px] text-amber-100/45">
-          ↻ {formatReset(win.resetsAt, nowMs)} dan keyin yangilanadi
+          ↻ yangilanishiga {formatReset(win.resetsAt, nowMs)}
         </div>
       ) : null}
     </div>
@@ -205,7 +206,7 @@ export function ClaudeUsageHud() {
 
           <div className="space-y-1.5 border-t border-amber-900/25 pt-2.5">
             <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-amber-500/70">
-              Xodimlar · {usage.agents.length}
+              Agentlar · {usage.agents.length}
             </div>
             {sessions.length === 0 ? (
               <p className="text-[11px] text-amber-100/50">Hozircha ochiq Claude Code sessiyasi yo&apos;q.</p>
@@ -222,6 +223,7 @@ export function ClaudeUsageHud() {
               ))
             )}
           </div>
+          <LanguageSwitch />
         </div>
       )}
     </div>
@@ -233,7 +235,7 @@ function AgentRow({ agent }: { agent: UsageAgent }) {
   return (
     <div className="flex items-center gap-2" title={agent.currentTool ?? STATUS_LABEL[agent.status]}>
       <span className={`h-2 w-2 shrink-0 rounded-full ${STATUS_DOT[agent.status]}`} />
-      <span className="min-w-0 flex-1 truncate text-[11px] text-amber-50/90">
+      <span className="min-w-0 flex-1 truncate text-[11px] text-amber-50/90" data-no-translate>
         {agent.kind === "subagent" ? "↳ " : ""}
         {agent.name}
       </span>
@@ -247,6 +249,42 @@ function AgentRow({ agent }: { agent: UsageAgent }) {
           {family}
         </span>
       ) : null}
+    </div>
+  );
+}
+
+function LanguageSwitch() {
+  const lang = useSyncExternalStore(
+    () => () => {},
+    readUiLang,
+    () => "uz" as const,
+  );
+  const choose = (next: "uz" | "en") => {
+    if (next === lang) return;
+    try {
+      window.localStorage.setItem(UI_LANG_KEY, next);
+    } catch {}
+    window.location.reload();
+  };
+  return (
+    <div className="flex items-center justify-between border-t border-amber-900/25 pt-2.5" data-no-translate>
+      <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-amber-500/70">Til</span>
+      <div className="flex gap-1">
+        {(["uz", "en"] as const).map((option) => (
+          <button
+            key={option}
+            type="button"
+            onClick={() => choose(option)}
+            className={`rounded-full border px-2 py-0.5 font-mono text-[9px] uppercase transition-colors ${
+              lang === option
+                ? "border-amber-400/60 bg-amber-500/20 text-amber-50"
+                : "border-amber-900/40 text-amber-100/50 hover:text-amber-50"
+            }`}
+          >
+            {option === "uz" ? "O'zbekcha" : "English"}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

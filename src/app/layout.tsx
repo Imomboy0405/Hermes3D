@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { Bebas_Neue, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import "./globals.css";
+import { UiTranslator } from "@/components/UiTranslator";
 
 export const metadata: Metadata = {
-  title: "Hermes3D",
+  title: "Agent Office",
   description: "Focused operator studio for the Hermes gateway.",
 };
 
@@ -42,6 +43,7 @@ export default function RootLayout({
       </head>
       <body className={`${display.variable} ${sans.variable} ${mono.variable} antialiased`}>
         <main className="h-screen w-screen overflow-hidden bg-background">{children}</main>
+        <UiTranslator />
       </body>
     </html>
   );

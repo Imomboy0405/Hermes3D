@@ -77,7 +77,14 @@ Model ikki manbadan olinadi: status line'dan va sessiya transcript'idan. Shu sab
 
 Ofis nomini sozlamalardagi (⚙) **Office title** maydonida o'zgartirish mumkin.
 
+## Til
+
+Interfeys standart holatda o'zbekcha. Tilni limit panelining pastki qismidagi **Til** qatoridan almashtirasiz: O'zbekcha yoki English.
+
+Tarjima `src/lib/i18n/uz.ts` lug'atida saqlanadi. `src/components/UiTranslator.tsx` esa ekrandagi inglizcha matnni shu lug'at bo'yicha almashtiradi. Komponentlarning o'zi o'zgartirilmagan, shuning uchun `git pull upstream main` konfliktsiz o'tadi. Agentlarning javoblari, kod va kiritish maydonlari tarjima qilinmaydi.
+
+Hali inglizcha qolgan matnni ko'rsangiz, uni `uz.ts` ga qo'shing. Kalit ekranda qanday yozilgan bo'lsa, xuddi shunday bo'lishi kerak.
+
 ## Hozircha yo'q
 
 - Ruxsatni ofisdan tasdiqlash. Hozircha ruxsat terminalda beriladi, ofis uni faqat ko'rsatadi.
-- Interfeysni o'zbek tiliga tarjima qilish.

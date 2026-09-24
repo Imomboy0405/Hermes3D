@@ -383,17 +383,17 @@ export const buildHermesHqMap = (): PixelOfficeMap => {
   // Zones with Gather-style floating labels.
   // ---------------------------------------------------------------------
   const zones: PixelZone[] = [
-    zone("z-meeting", "meeting", "Meeting room", 6, 2, 11, 10),
-    zone("z-kitchen", "kitchen", "Kitchen", 18, 2, 10, 7),
-    zone("z-cx", "team_pod", "CX team", 29, 2, 10, 7),
-    zone("z-reading", "library", "Reading nook", 40, 2, 14, 11),
-    zone("z-product", "team_pod", "Product team", 18, 10, 21, 15),
-    zone("z-ops", "focus", "Ops corner", 40, 13, 14, 11),
-    zone("z-phone", "phone", "Phone booths", 6, 13, 11, 9),
-    zone("z-gym", "gym", "Gym", 6, 23, 11, 10),
-    zone("z-lounge", "lounge", "Lounge", 18, 25, 16, 15),
-    zone("z-game", "game_room", "Game room", 34, 25, 11, 9),
-    zone("z-server", "server", "Server room", 45, 25, 9, 15),
+    zone("z-meeting", "meeting", "Majlis xonasi", 6, 2, 11, 10),
+    zone("z-kitchen", "kitchen", "Oshxona", 18, 2, 10, 7),
+    zone("z-cx", "team_pod", "Mijozlar jamoasi", 29, 2, 10, 7),
+    zone("z-reading", "library", "Mutolaa burchagi", 40, 2, 14, 11),
+    zone("z-product", "team_pod", "Mahsulot jamoasi", 18, 10, 21, 15),
+    zone("z-ops", "focus", "Ops burchagi", 40, 13, 14, 11),
+    zone("z-phone", "phone", "Telefon kabinalari", 6, 13, 11, 9),
+    zone("z-gym", "gym", "Sport zal", 6, 23, 11, 10),
+    zone("z-lounge", "lounge", "Dam olish zonasi", 18, 25, 16, 15),
+    zone("z-game", "game_room", "O'yin xonasi", 34, 25, 11, 9),
+    zone("z-server", "server", "Server xonasi", 45, 25, 9, 15),
   ];
 
   return {
