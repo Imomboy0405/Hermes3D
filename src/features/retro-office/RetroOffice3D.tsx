@@ -3298,13 +3298,48 @@ export function RetroOffice3D({
   const deskLocations = useMemo(() => getDeskLocations(furniture), [furniture]);
   const assignedDeskIndexByAgentId = useMemo(() => {
     const next: Record<string, number> = {};
+    const present = new Set(agents.map((agent) => agent.id));
+    const taken = new Set<number>();
     deskItems.forEach((item, index) => {
       const agentId = deskAssignmentByDeskUid[item._uid];
       if (!agentId) return;
       next[agentId] = index;
+      if (present.has(agentId)) taken.add(index);
     });
+    // Auto-seat everyone without a saved desk, so a working agent sits down
+    // instead of typing where it stands. Saved assignments always win.
+    // Claude Code sessions ("cc-") fill desks from the front, everyone else
+    // (the permanent team) from the back, each group in a fixed order, so a
+    // session opening or closing never shuffles the team between desks.
+    const unseated = agents.filter(
+      (agent) => next[agent.id] === undefined && !isRemoteOfficeAgentId(agent.id),
+    );
+    const sessions = unseated
+      .filter((agent) => agent.id.startsWith("cc-"))
+      .sort((a, b) => a.id.localeCompare(b.id));
+    const team = unseated
+      .filter((agent) => !agent.id.startsWith("cc-"))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    let front = 0;
+    let back = deskItems.length - 1;
+    const seat = (agentId: string, fromFront: boolean) => {
+      if (fromFront) {
+        while (front <= back && taken.has(front)) front += 1;
+        if (front > back) return;
+        next[agentId] = front;
+        taken.add(front);
+      } else {
+        while (back >= front && taken.has(back)) back -= 1;
+        if (back < front) return;
+        next[agentId] = back;
+        taken.add(back);
+      }
+    };
+    // Sessions are seated first: if desks run out, the team stands, not you.
+    for (const agent of sessions) seat(agent.id, true);
+    for (const agent of team) seat(agent.id, false);
     return next;
-  }, [deskAssignmentByDeskUid, deskItems]);
+  }, [agents, deskAssignmentByDeskUid, deskItems]);
   const janitorCleaningStops = useMemo(
     () => getJanitorCleaningStops(furniture),
     [furniture],

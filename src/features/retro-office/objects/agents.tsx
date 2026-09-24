@@ -15,16 +15,25 @@ import type {
 import { AgentModelProps } from "@/features/retro-office/objects/types";
 
 const MAX_NAMEPLATE_TEXT_LENGTH = 10;
+// Names without spaces (move_green_mobile, bloc-logic) cannot fall back to a
+// first word, so they are capped and shrunk to fit the plate on one line.
+const MAX_NAMEPLATE_CHARS = 14;
+const NAMEPLATE_TEXT_WIDTH = 0.64;
 const MAX_SUBTITLE_TEXT_LENGTH = 20;
-const MAX_SPEECH_BUBBLE_TEXT_LENGTH = 180;
-const MAX_SPEECH_BUBBLE_LINES = 4;
+const MAX_SPEECH_BUBBLE_TEXT_LENGTH = 110;
+const MAX_SPEECH_BUBBLE_LINES = 3;
+// Average glyph advance of the default font, as a fraction of font size.
+const GLYPH_WIDTH_EM = 0.56;
 
 const formatAgentNameplateText = (value: string): string => {
   const normalized = value.replace(/\s+/g, " ").trim();
   if (!normalized) return "";
   if (normalized.length <= MAX_NAMEPLATE_TEXT_LENGTH) return normalized;
   const [firstName] = normalized.split(" ");
-  return firstName || normalized;
+  const short = firstName || normalized;
+  return short.length <= MAX_NAMEPLATE_CHARS
+    ? short
+    : `${short.slice(0, MAX_NAMEPLATE_CHARS - 1)}…`;
 };
 
 /**
@@ -663,17 +672,26 @@ export const AgentModel = memo(function AgentModel({
   const speechBubbleDisplayText = speechBubblePreview.text;
   const speechBubbleWasTruncated = speechBubblePreview.truncated;
   const speechBubbleTextLength = speechBubbleDisplayText.length;
+  // Compact bubble: roughly nameplate-sized text, at most three short lines.
+  const speechBubbleFontSize = activeSpeechBubble
+    ? speechBubbleTextLength > 70
+      ? 0.1
+      : 0.112
+    : 0.1;
   const speechBubbleWidth = activeSpeechBubble
-    ? Math.min(4.6, Math.max(1.8, 1.55 + speechBubbleTextLength * 0.018))
+    ? Math.min(2.2, Math.max(1.1, 0.9 + speechBubbleTextLength * 0.014))
     : 0.36;
-  const speechBubblePaddingX = activeSpeechBubble ? 0.34 : 0.06;
-  const speechBubblePaddingY = activeSpeechBubble ? 0.3 : 0.06;
+  const speechBubblePaddingX = activeSpeechBubble ? 0.2 : 0.06;
+  const speechBubblePaddingY = activeSpeechBubble ? 0.16 : 0.06;
   const speechBubbleMaxWidth = Math.max(
     0.24,
     speechBubbleWidth - speechBubblePaddingX,
   );
   const estimatedSpeechCharsPerLine = activeSpeechBubble
-    ? Math.max(10, Math.floor(speechBubbleMaxWidth * 7))
+    ? Math.max(
+        10,
+        Math.floor(speechBubbleMaxWidth / (speechBubbleFontSize * GLYPH_WIDTH_EM)),
+      )
     : 8;
   const estimatedSpeechLines = activeSpeechBubble
     ? Math.max(
@@ -685,15 +703,13 @@ export const AgentModel = memo(function AgentModel({
       )
     : 1;
   const speechBubbleHeight = activeSpeechBubble
-    ? Math.max(0.72, estimatedSpeechLines * 0.26 + speechBubblePaddingY)
+    ? Math.max(
+        0.34,
+        estimatedSpeechLines * speechBubbleFontSize * 1.15 +
+          speechBubblePaddingY +
+          (speechBubbleWasTruncated ? 0.1 : 0),
+      )
     : 0.2;
-  const speechBubbleFontSize = activeSpeechBubble
-    ? speechBubbleTextLength > 110
-      ? 0.188
-      : speechBubbleTextLength > 70
-        ? 0.2
-        : 0.216
-    : 0.13;
   const speechBubbleTextColor = activeSpeechBubble
     ? "#f8fafc"
     : status === "error"
@@ -720,8 +736,10 @@ export const AgentModel = memo(function AgentModel({
       : "";
   const nameplateHeight =
     1.05 + (inHuddle ? ((huddleSeatIndex ?? 0) % 4) * 0.17 : 0);
-  const nameplateFontSize =
-    nameplateText.length > 9 ? 0.118 : nameplateText.length > 7 ? 0.13 : 0.144;
+  const nameplateFontSize = Math.min(
+    0.144,
+    NAMEPLATE_TEXT_WIDTH / (Math.max(1, nameplateText.length) * GLYPH_WIDTH_EM),
+  );
 
   return (
     <group
@@ -1187,6 +1205,7 @@ export const AgentModel = memo(function AgentModel({
             anchorX="center"
             anchorY="middle"
             maxWidth={0.68}
+            whiteSpace="nowrap"
             font={undefined}
           >
             {nameplateText}
@@ -1199,6 +1218,7 @@ export const AgentModel = memo(function AgentModel({
               anchorX="center"
               anchorY="middle"
               maxWidth={0.68}
+              whiteSpace="nowrap"
               font={undefined}
             >
               {subtitleText}
@@ -1231,7 +1251,7 @@ export const AgentModel = memo(function AgentModel({
               rotation={[0, 0, Math.PI / 4]}
               renderOrder={99997}
             >
-              <planeGeometry args={[0.22, 0.22]} />
+              <planeGeometry args={[0.12, 0.12]} />
               <meshBasicMaterial
                 color="#1a2030"
                 transparent
@@ -1272,7 +1292,11 @@ export const AgentModel = memo(function AgentModel({
           <Text
             position={
               activeSpeechBubble
-                ? [-speechBubbleWidth / 2 + speechBubblePaddingX / 2, 0, 0.001]
+                ? [
+                    -speechBubbleWidth / 2 + speechBubblePaddingX / 2,
+                    speechBubbleWasTruncated ? 0.045 : 0,
+                    0.001,
+                  ]
                 : [0, 0, 0.001]
             }
             fontSize={speechBubbleFontSize}
@@ -1291,8 +1315,8 @@ export const AgentModel = memo(function AgentModel({
           </Text>
           {activeSpeechBubble && speechBubbleWasTruncated ? (
             <Text
-              position={[0, -speechBubbleHeight * 0.34, 0.001]}
-              fontSize={0.09}
+              position={[0, -speechBubbleHeight / 2 + 0.07, 0.001]}
+              fontSize={0.06}
               color="#8ab4ff"
               anchorX="center"
               anchorY="middle"
