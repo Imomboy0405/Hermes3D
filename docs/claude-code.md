@@ -63,8 +63,21 @@ Model belgisi: 🟣 Opus, 🔵 Sonnet, 🟢 Haiku, 🟠 Fable/Mythos.
 - Holat `%USERPROFILE%\.agent-office\claude-state.json` fayliga saqlanadi. Adapterni qayta ishga tushirsangiz, xodimlar joyida qoladi.
 - Adapter ishlamayotgan paytda Claude Code odatdagidek ishlayveradi. Hook'lar hech narsani bloklamaydi.
 
-## Hozircha yo'q (keyingi bosqich)
+## Limit paneli
 
-- Ofis ichidagi limit paneli. Ma'lumot `claude.usage` hodisasi sifatida kelyapti, UI qismi hali yozilmagan.
+Ofisning o'ng yuqori burchagida **Claude limit** paneli turadi. Unda quyidagilar ko'rinadi:
+
+- 5 soatlik va haftalik limit, har biri qachon yangilanishi bilan;
+- har bir xodimning holati, modeli (Opus / Sonnet / Haiku) va context to'lganlik darajasi;
+- subagentlar o'z sessiyasi ostida `↳` belgisi bilan.
+
+Panel sarlavhasini bossangiz, u yig'iladi.
+
+Model ikki manbadan olinadi: status line'dan va sessiya transcript'idan. Shu sababli Claude desktop ilovasidagi sessiyalarning modeli ham ko'rinadi. Limit esa faqat terminaldagi status line'dan keladi.
+
+Ofis nomini sozlamalardagi (⚙) **Office title** maydonida o'zgartirish mumkin.
+
+## Hozircha yo'q
+
 - Ruxsatni ofisdan tasdiqlash. Hozircha ruxsat terminalda beriladi, ofis uni faqat ko'rsatadi.
 - Interfeysni o'zbek tiliga tarjima qilish.

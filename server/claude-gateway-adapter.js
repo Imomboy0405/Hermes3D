@@ -253,6 +253,9 @@ function usagePayload() {
       model: agent.model || null,
       modelFamily: shortModel(agent.model),
       status: agent.status,
+      parentId: agent.parentId || null,
+      currentTool: agent.currentTool || null,
+      lastActivityAt: agent.lastActivityAt,
       contextUsedPercentage: agent.contextUsedPercentage ?? null,
     })),
   };
@@ -393,6 +396,53 @@ function resolveAgent(input) {
     return ensureSubagent(parent, input);
   }
   return parent;
+}
+
+// ---------------------------------------------------------------------------
+// Model detection from the session transcript. The status line only runs in
+// the terminal UI, so sessions from the desktop app would otherwise never
+// report a model. Every assistant line in the JSONL transcript carries one.
+// ---------------------------------------------------------------------------
+
+const TRANSCRIPT_TAIL_BYTES = 256 * 1024;
+const MODEL_SCAN_INTERVAL_MS = 20_000;
+
+function readTranscriptModel(transcriptPath) {
+  if (typeof transcriptPath !== "string" || !transcriptPath) return null;
+  let fd = null;
+  try {
+    fd = fs.openSync(transcriptPath, "r");
+    const { size } = fs.fstatSync(fd);
+    const length = Math.min(size, TRANSCRIPT_TAIL_BYTES);
+    const buffer = Buffer.alloc(length);
+    fs.readSync(fd, buffer, 0, length, size - length);
+    const text = buffer.toString("utf8");
+    const matches = text.match(/"model"\s*:\s*"(claude-[^"]+)"/g);
+    if (!matches) return null;
+    const last = matches[matches.length - 1].match(/"(claude-[^"]+)"$/);
+    return last ? last[1] : null;
+  } catch {
+    return null;
+  } finally {
+    if (fd !== null) {
+      try {
+        fs.closeSync(fd);
+      } catch {}
+    }
+  }
+}
+
+function refreshModelFromTranscript(agent, input, force = false) {
+  if (agent.kind !== "session") return;
+  if (!force && agent.modelScannedAt && now() - agent.modelScannedAt < MODEL_SCAN_INTERVAL_MS) return;
+  agent.modelScannedAt = now();
+  const model = readTranscriptModel(input.transcript_path);
+  if (model && model !== agent.model) {
+    agent.model = model;
+    log(`"${agent.name}" model: ${model}`);
+    emitPresence();
+    emitUsage();
+  }
 }
 
 function touch(agent) {
@@ -569,6 +619,8 @@ function handleHook(input) {
   if (!agent) return;
   touch(agent);
   if (agent.kind === "session" && typeof input.model === "string" && input.model) agent.model = input.model;
+  if (event === "Stop" || event === "SessionStart") refreshModelFromTranscript(agent, input, true);
+  else if (event === "PostToolUse") refreshModelFromTranscript(agent, input);
 
   switch (event) {
     case "SessionStart":
@@ -717,8 +769,16 @@ function defaultAgentId() {
   return sessions[0]?.id || null;
 }
 
+// Current public Claude models, so the office's model picker is never empty.
+const MODEL_CATALOG = [
+  { id: "claude-opus-5-5", name: "Opus 5.5" },
+  { id: "claude-sonnet-5", name: "Sonnet 5" },
+  { id: "claude-haiku-4-5-20251001", name: "Haiku 4.5" },
+  { id: "claude-fable-5-1", name: "Fable 5.1" },
+];
+
 function modelsPayload() {
-  const seen = new Map();
+  const seen = new Map(MODEL_CATALOG.map((model) => [model.id, { ...model, provider: "anthropic" }]));
   for (const agent of agents.values()) {
     if (agent.model && !seen.has(agent.model)) {
       seen.set(agent.model, { id: agent.model, name: shortModel(agent.model), provider: "anthropic" });
@@ -959,7 +1019,12 @@ function readJsonBody(req) {
 }
 
 function sendJson(res, status, body) {
-  res.writeHead(status, { "Content-Type": "application/json" });
+  // The office page (localhost:3000) reads /usage straight from the browser.
+  res.writeHead(status, {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+    "Cache-Control": "no-store",
+  });
   res.end(JSON.stringify(body));
 }
 

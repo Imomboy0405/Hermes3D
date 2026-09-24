@@ -13,6 +13,7 @@ import { MessageSquare, ChevronDown, ChevronLeft, ChevronRight, Mic } from "luci
 import { RetroOffice3D } from "@/features/retro-office/RetroOffice3D";
 import type { OfficeAgent } from "@/features/retro-office/core/types";
 import { PixelOffice2D } from "@/features/pixel-office/PixelOffice2D";
+import { ClaudeUsageHud } from "@/features/office/components/ClaudeUsageHud";
 import {
   resolveInitialOfficeRenderMode,
   saveOfficeRenderMode,
@@ -4502,6 +4503,7 @@ export function OfficeScreen({
         </div>
       ) : null}
       <section className="relative h-full min-h-0 min-w-0 overflow-hidden">
+        {officeSceneReady ? <ClaudeUsageHud /> : null}
         {!officeSceneReady ? (
         <div
           className="flex h-full w-full items-center justify-center bg-[radial-gradient(ellipse_at_center,#1c1208_0%,#0d0804_70%)]"
